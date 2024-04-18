@@ -1,8 +1,16 @@
 [project]
 name = "template"
 version = "0.0.1"
-# dependencies = [
-#     "requests",
-# ]
+requires-python = ">= 3.11"
+dependencies = [
+    "numpy",
+    "torch",
+    "transformers",
+    "datasets",
+    "tiktoken",
+    "torcheval"
+]
 
-# [project.scripts]
+[project.scripts]
+
+template = "template.executable:main"

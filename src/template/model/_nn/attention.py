@@ -33,7 +33,7 @@ def attention_forward(layer, state_for_value, state_for_query):
     k = layer.k(state_for_value)
     v = layer.v(state_for_value)
 
-    args = b, s, layer.n_head, layer.head_d
+    args = b, s, layer.config.n_head, layer.head_d
     q = head_split(q, *args)
     k = head_split(k, *args)
     v = head_split(v, *args)
@@ -46,27 +46,25 @@ def attention_forward(layer, state_for_value, state_for_query):
     return x
 
 
-class AttentionIngredient(nn.Module):
+class Attention(nn.Module):
     def __init__(self, config):
         super().__init__()
         assert config.d % config.n_head == 0
-        self.d = config.d
-        self.n_head = config.n_head
-        self.head_d = self.d // self.n_head
-        self.dropout = config.dropout
-        self.bias = config.bias
-        self.sequence_length = config.sequence_length
-        linear = lambda: nn.Linear(self.d, self.d, bias=self.bias)
+        self.config = config
+        self.head_d = self.config.d // self.config.n_head
+        linear = lambda: nn.Linear(
+            self.config.d, self.config.d, bias=self.config.bias
+        )
         self.q = linear()
         self.k = linear()
         self.v = linear()
         self.projection = linear()
-        self.attention_dropout = nn.Dropout(self.dropout)
-        self.residue_dropout = nn.Dropout(self.dropout)
+        self.attention_dropout = nn.Dropout(config.dropout)
+        self.residue_dropout = nn.Dropout(config.dropout)
         self.register_buffer("mask", None)
 
 
-class Attention(AttentionIngredient):
+class CrossAttention(Attention):
     def __init__(self, config):
         super().__init__(config)
 
@@ -74,7 +72,7 @@ class Attention(AttentionIngredient):
         return attention_forward(self, state_for_value, state_for_query)
 
 
-class SelfAttention(AttentionIngredient):
+class SelfAttention(Attention):
     def __init__(self, config):
         super().__init__(config)
 
@@ -82,10 +80,10 @@ class SelfAttention(AttentionIngredient):
         return attention_forward(self, hs, hs)
 
 
-class CausalSelfAttention(AttentionIngredient):
+class CausalSelfAttention(Attention):
     def __init__(self, config):
         super().__init__(config)
-        self.mask = causal_mask(self.sequence_length)
+        self.mask = causal_mask(self.config.sequence_length)
 
-    def forward(self, decoder_hs):
-        return attention_forward(self, decoder_hs, decoder_hs)
+    def forward(self, hs):
+        return attention_forward(self, hs, hs)

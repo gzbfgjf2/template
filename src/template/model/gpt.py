@@ -1,14 +1,11 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from plain.nn import (
-    LayerNorm,
-    Mlp,
-    CausalSelfAttention,
-)
-
 import math
-from .mixins.optimizer import OptimizerMixin
+from ._nn.attention import CausalSelfAttention
+from ._nn.mlp import Mlp
+from ._nn.layer_norm import LayerNorm
+from ._mixin.optimizer import OptimizerMixin
 
 
 class Block(nn.Module):
@@ -35,28 +32,26 @@ class GPT(OptimizerMixin, nn.Module):
         self.wte.weight = self.lm_head.weight
         self.drop = nn.Dropout(config.dropout)
         self.ln = LayerNorm(config.d, bias=config.bias)
-
         self.blocks = nn.ModuleList(
             [Block(config) for _ in range(config.n_layer)]
         )
+        self.loss_function = F.cross_entropy
+        self.load_weight(config)
 
+    def load_weight(self, config):
         self.apply(self._init_weights)
-
         # apply special scaled init to the residual projections, per GPT-2 paper
         for pn, p in self.named_parameters():
             if pn.endswith("c_proj.weight"):
                 torch.nn.init.normal_(
                     p, mean=0.0, std=0.02 / math.sqrt(2 * config.n_layer)
                 )
-
         # report number of parameters
         n_params = self.get_num_params()
         print("number of parameters: %.2fM" % (n_params / 1e6,))
-
         self.scaler = torch.cuda.amp.GradScaler(
             enabled=(self.config.dtype == "float16")
         )
-        self.loss_function = F.cross_entropy
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):

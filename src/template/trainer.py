@@ -1,8 +1,8 @@
 import torch
 from types import SimpleNamespace
-from torch.utils.data import DataLoader
-import tomli
 import json
+import tomllib
+
 from collections import namedtuple
 from pathlib import Path
 import sys
@@ -33,7 +33,7 @@ def pretty_tokens(batch):
 
 def load_config_dict(path):
     with open(path, "rb") as f:
-        return tomli.load(f)
+        return tomllib.load(f)
 
 
 def init_config_object(config_dict):
@@ -48,17 +48,16 @@ def init_config_object(config_dict):
 
 
 class Trainer:
-    def __init__(self, config_dict, data_class, model_class):
+    def __init__(self, config_dict, data, model):
         self.config_dict = config_dict
         self.config = init_config_object(self.config_dict)
         self.device = self.config.device
         self.load_checkpoint()
         self.init_state()
-        self.data = data_class(self.config)
-        model = model_class(self.config)
+        self.data = data
         self.model = model.to(self.device)
         self.init_optimizer()
-        # free memory
+        self.del_checkpoint()
 
     def run(self):
         self.evaluation_step()
@@ -70,7 +69,7 @@ class Trainer:
             for step, data in enumerate(loader):
                 # looks ugly but the logic is very easy to read
                 self.state.step = step + 1
-                data = self.iterable_to_device(data, self.device)
+                # data = self.iterable_to_device(data, self.device)
                 self.forward_backward_step(data)
                 if self.should_optimize():
                     self.optimize()
@@ -100,6 +99,10 @@ class Trainer:
         if checkpoint_path.exists():
             self.checkpoint = torch.load(checkpoint_path, map_location="cpu")
 
+    def del_checkpoint(self):
+        if hasattr(self, "checkpoint"):
+            del self.checkpoint
+
     def init_state(self):
         self.state = SimpleNamespace()
         if hasattr(self, "checkpoint"):
@@ -110,19 +113,9 @@ class Trainer:
         self.state.optimization_step = 0
         self.state.best_save_metric = -float("inf")
 
-    # def init_model(self):
-    #     model = self.model_class(self.config)
-    #     if self.config.init_from == "pretrained":
-    #         model.copy_pretrained()
-    #     elif self.config.init_from == "checkpoint":
-    #         model.load_checkpoint(self.checkpoint["model"])
-    #     self.model = model.to(self.device)
-    #     if self.config.freeze:
-    #         self.model.freeze()
-
     def init_optimizer(self):
         self.optimizer = self.model.create_optimizer()
-        if self.config.init_from == "pretrained":
+        if hasattr(self, "checkpoint"):
             self.optimizer.load_state_dict(self.checkpoint["optimizer"])
 
     def forward_backward_step(self, data):
@@ -161,27 +154,6 @@ class Trainer:
     def should_evaluate(self):
         return (self.state.optimization_step) % self.config.eval_interval == 0
 
-    # @torch.no_grad()
-    # def sample(self):
-    #     self.model.eval()
-    #     loader = self.data.valuation_loader()
-    #     for i, data in enumerate(loader):
-    #         data = self.iterable_to_device(data, self.device)
-    #         input_, label = data
-    #         prediction = self.model.sample(input_)
-    #         self.sample_log(input_, label, prediction)
-    #         if i == self.config.n_sample:
-    #             break
-    #     self.model.train()
-    #
-    # def sample_log(self, input_, label, prediction):
-    #     print("input")
-    #     print(self.data.decode(input_))
-    #     print("expected output")
-    #     print(self.data.decode(label))
-    #     print("real output")
-    #     print(self.data.decode(prediction))
-
     @torch.no_grad()
     def evaluation_step(self):
         self.model.eval()
@@ -197,7 +169,7 @@ class Trainer:
             self.state.eval_predictions.append(prediction)
             if i == self.config.eval_iters - 1:
                 break
-        self.state.metric = self.data.get_metrics(
+        self.state.metric = self.data.compute_metric(
             self.state.eval_predictions, self.state.eval_labels
         )
         self.state.eval_loss = round(losses.mean().item(), 4)
@@ -222,7 +194,6 @@ class Trainer:
     def evaluate(self):
         self.evaluation_step()
         self.evaluation_step_log()
-        # self.sample()
 
     def should_save_checkpoint(self):
         if self.state.best_save_metric >= self.state.save_metric:
@@ -245,10 +216,6 @@ class Trainer:
         )
         print(f"saving checkpoint to {checkpoint_path}")
         torch.save(checkpoint, checkpoint_path)
-
-    # def do_forward_backward_step(self, data):
-    #     data = self.iterable_to_device(data, self.device)
-    #     self.forward_backward_step(data)
 
 
 def run_training(config_dict, data_class, model_class):
