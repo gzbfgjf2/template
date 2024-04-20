@@ -83,17 +83,9 @@ class Trainer:
             if self.should_save_checkpoint():
                 self.save_checkpoint()
 
-    @staticmethod
-    def iterable_to_device(iterable, device):
-        return tuple(x.to(device) for x in iterable)
-
     def load_checkpoint(self):
-        # checkpoint_path = Path("checkpoint") / (
-        #     self.config.experiment_name + ".ckpt"
-        # )
         experiment_path = Path(sys.argv[2])
         checkpoint_path = experiment_path / "checkpoint.ckpt"
-
         # why cpu
         # https://github.com/pytorch/pytorch/issues/7415#issuecomment-693424574
         if checkpoint_path.exists():
@@ -162,9 +154,12 @@ class Trainer:
         self.state.eval_predictions = []
         self.state.eval_labels = []
         for i, data in enumerate(loader):
-            data = self.iterable_to_device(data, self.device)
-            prediction, eval_loss = self.model.evaluation_step(data)
+            with torch.autocast(
+                device_type=self.config.device, dtype=torch.bfloat16
+            ):
+                prediction, eval_loss = self.model.evaluation_step(data)
             losses[i] = eval_loss
+            # may need input, so append all data
             self.state.eval_labels.append(data)
             self.state.eval_predictions.append(prediction)
             if i == self.config.eval_iters - 1:
@@ -211,9 +206,7 @@ class Trainer:
             "state": self.state,
         }
 
-        checkpoint_path = (
-            "experiments/" + self.config.experiment_name + "/checkpoint.ckpt"
-        )
+        checkpoint_path = Path(sys.argv[2] + "/checkpoint.ckpt")
         print(f"saving checkpoint to {checkpoint_path}")
         torch.save(checkpoint, checkpoint_path)
 

@@ -95,12 +95,10 @@ class Data:
         )
 
     def compute_metric(self, predictions, labels):
-        # metric = Perplexity(device=predictions[0].device)
-        # assert len(predictions) == len(labels)
-        # for prediction, label in zip(predictions, labels):
-        #     metric.update(prediction, label)
-        # return {"perplexity": metric.compute()}
-        return {"perplexity": 0}
+        metric = Perplexity(device=predictions[0].device)
+        for prediction, label in zip(predictions, labels):
+            metric.update(prediction, label[1])
+        return {"perplexity": metric.compute()}
 
 
 class TorchDataset(Dataset):

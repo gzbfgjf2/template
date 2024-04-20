@@ -85,8 +85,8 @@ class GPT(OptimizerMixin, nn.Module):
         loss = self.loss_function(
             logits.view(-1, logits.size(-1)), y.view(-1), ignore_index=-1
         )
-        ids = torch.argmax(logits, dim=-1)
-        return ids, loss
+        # ids = torch.argmax(logits, dim=-1)
+        return logits, loss
 
     def forward(self, idx):
         device = idx.device
