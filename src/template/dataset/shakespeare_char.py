@@ -1,9 +1,7 @@
 from pathlib import Path
 import requests
-import os
 import numpy as np
 import pickle
-import tiktoken
 from torch.utils.data import DataLoader, Dataset
 import torch
 from torcheval.metrics.text import Perplexity
@@ -72,7 +70,6 @@ class Data:
         self.config = config
         self.dataset_name = Path(__file__).stem
         data_folder = Path.cwd() / "data" / self.dataset_name
-        print(data_folder)
         np_map = lambda file_name: np.memmap(
             data_folder / file_name, dtype=np.uint16, mode="r"
         )
@@ -82,23 +79,27 @@ class Data:
         self.train = TorchDataset(config, self.train_data)
         self.validation = TorchDataset(config, self.validation_data)
         self.test = TorchDataset(config, self.test_data)
-        self.encoding = tiktoken.get_encoding("gpt2")
+        with open(data_folder / "meta.pkl", "rb") as f:
+            self.meta = pickle.load(f)
 
     def train_loader(self):
-        return DataLoader(
-            self.train, batch_size=10, shuffle=False, pin_memory=True
-        )
+        return DataLoader(self.train, batch_size=self.config.batch_size)
 
     def validation_loader(self):
-        return DataLoader(
-            self.validation, batch_size=10, shuffle=False, pin_memory=True
-        )
+        return DataLoader(self.validation, batch_size=self.config.batch_size)
 
     def compute_metric(self, predictions, labels):
         metric = Perplexity(device=predictions[0].device)
         for prediction, label in zip(predictions, labels):
             metric.update(prediction, label[1])
+            ids = torch.argmax(prediction, dim=-1)
+            for sequence in ids:
+                print(self.decode(sequence))
+
         return {"perplexity": metric.compute()}
+
+    def decode(self, array):
+        return "".join([self.meta["itos"][i.item()] for i in array])
 
 
 class TorchDataset(Dataset):
@@ -106,7 +107,7 @@ class TorchDataset(Dataset):
         self.config = config
         self.data = data
         self.token_size = len(self.data)
-        self.sequence_length = self.config.sequence_length
+        self.sequence_length = self.config.sequence_length + 1
         # avoid overflow
         self.len = self.token_size // self.sequence_length - 1
 
