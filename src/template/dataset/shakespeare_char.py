@@ -5,6 +5,7 @@ import pickle
 from torch.utils.data import DataLoader, Dataset
 import torch
 from torcheval.metrics.text import Perplexity
+from typing import List
 
 
 def prepare(path: Path):
@@ -94,12 +95,15 @@ class Data:
             metric.update(prediction, label[1])
             ids = torch.argmax(prediction, dim=-1)
             for sequence in ids:
-                print(self.decode(sequence))
+                print(self.decode(sequence.tolist()))
 
         return {"perplexity": metric.compute()}
 
-    def decode(self, array):
-        return "".join([self.meta["itos"][i.item()] for i in array])
+    def encode(self, string):
+        return [self.meta["stoi"][c] for c in string]
+
+    def decode(self, array: List):
+        return "".join([self.meta["itos"][i] for i in array])
 
 
 class TorchDataset(Dataset):
