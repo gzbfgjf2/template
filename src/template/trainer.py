@@ -3,7 +3,6 @@ from types import SimpleNamespace
 import json
 import tomllib
 
-from collections import namedtuple
 from pathlib import Path
 import sys
 
@@ -36,21 +35,9 @@ def load_config_dict(path):
         return tomllib.load(f)
 
 
-def init_config_object(config_dict):
-    # https://stackoverflow.com/a/34997118/17749529
-    # https://stackoverflow.com/a/15882327/17749529
-    # dictionary to object for dot access
-    # namedtuple for immutability
-    return json.loads(
-        json.dumps(config_dict),
-        object_hook=lambda d: namedtuple("Config", d.keys())(*d.values()),
-    )
-
-
 class Trainer:
-    def __init__(self, config_dict, data, model):
-        self.config_dict = config_dict
-        self.config = init_config_object(self.config_dict)
+    def __init__(self, config, data, model):
+        self.config = config
         self.device = self.config.device
         self.load_checkpoint()
         self.init_state()
@@ -58,6 +45,19 @@ class Trainer:
         self.model = model.to(self.device)
         self.init_optimizer()
         self.del_checkpoint()
+
+    def generate(self):
+        for _ in range(5):
+            x = self.data.encode("\n")
+            x = torch.tensor(x, dtype=torch.long, device=self.config.device)[
+                None, ...
+            ]
+
+            y = self.model.generate(x)
+            print(y.shape)
+            
+            print(self.data.decode(y[0].tolist()))
+            print("--------------")
 
     def run(self):
         self.evaluation_step()
@@ -111,10 +111,10 @@ class Trainer:
             self.optimizer.load_state_dict(self.checkpoint["optimizer"])
 
     def forward_backward_step(self, data):
-        with torch.autocast(
-            device_type=self.config.device, dtype=torch.bfloat16
-        ):
-            _, loss = self.model.training_step(data)
+        # with torch.autocast(
+        #     device_type=self.config.device, dtype=torch.bfloat16
+        # ):
+        _, loss = self.model.training_step(data)
         self.state.train_loss = round(loss.item(), 3)
         self.state.loss = loss / self.config.gradient_accumulation_steps
         self.state.loss.backward()
@@ -131,7 +131,7 @@ class Trainer:
         self.state.optimization_step += 1
 
     def optimize_step_log(self):
-        keys = "mode", "epoch", "optimization_step", "train_loss"
+        keys = "step", "epoch", "optimization_step", "train_loss"
         vals = ["optimization"]
         for k in keys[1:]:
             if not hasattr(self.state, k):
@@ -154,10 +154,10 @@ class Trainer:
         self.state.eval_predictions = []
         self.state.eval_labels = []
         for i, data in enumerate(loader):
-            with torch.autocast(
-                device_type=self.config.device, dtype=torch.bfloat16
-            ):
-                prediction, eval_loss = self.model.evaluation_step(data)
+            # with torch.autocast(
+            #     device_type=self.config.device, dtype=torch.bfloat16
+            # ):
+            prediction, eval_loss = self.model.evaluation_step(data)
             losses[i] = eval_loss
             # may need input, so append all data
             self.state.eval_labels.append(data)
@@ -209,8 +209,3 @@ class Trainer:
         checkpoint_path = Path(sys.argv[2] + "/checkpoint.ckpt")
         print(f"saving checkpoint to {checkpoint_path}")
         torch.save(checkpoint, checkpoint_path)
-
-
-def run_training(config_dict, data_class, model_class):
-    t = Trainer(config_dict, data_class, model_class)
-    t.run()
