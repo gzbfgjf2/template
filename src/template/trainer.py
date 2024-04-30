@@ -36,15 +36,14 @@ def load_config_dict(path):
 
 
 class Trainer:
-    def __init__(self, config, data, model):
+    def __init__(self, config, data, model, checkpoint=None):
         self.config = config
         self.device = self.config.device
-        self.load_checkpoint()
-        self.init_state()
+        self.init_state(checkpoint)
         self.data = data
         self.model = model.to(self.device)
         self.init_optimizer()
-        self.del_checkpoint()
+        del checkpoint
 
     def generate(self):
         for _ in range(5):
@@ -55,7 +54,7 @@ class Trainer:
 
             y = self.model.generate(x)
             print(y.shape)
-            
+
             print(self.data.decode(y[0].tolist()))
             print("--------------")
 
@@ -95,19 +94,19 @@ class Trainer:
         if hasattr(self, "checkpoint"):
             del self.checkpoint
 
-    def init_state(self):
-        self.state = SimpleNamespace()
-        if hasattr(self, "checkpoint"):
-            self.state = self.checkpoint["state"]
+    def init_state(self, checkpoint=None):
+        if checkpoint is not None:
+            self.state = checkpoint["state"]
             return
+        self.state = SimpleNamespace()
         self.state.step = 0
         self.state.epoch = 0
         self.state.optimization_step = 0
         self.state.best_save_metric = -float("inf")
 
-    def init_optimizer(self):
+    def init_optimizer(self, checkpoint=None):
         self.optimizer = self.model.create_optimizer()
-        if hasattr(self, "checkpoint"):
+        if checkpoint is not None:
             self.optimizer.load_state_dict(self.checkpoint["optimizer"])
 
     def forward_backward_step(self, data):

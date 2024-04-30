@@ -1,9 +1,29 @@
 import importlib
 from pathlib import Path
 import sys
-from template.trainer import Trainer, load_config_dict 
+from template.trainer import Trainer, load_config_dict
 import json
 from collections import namedtuple
+import torch
+
+
+def get_checkpoint():
+    experiment_path = Path(sys.argv[2])
+    checkpoint_path = experiment_path / "checkpoint.ckpt"
+    # why cpu
+    # https://github.com/pytorch/pytorch/issues/7415#issuecomment-693424574
+    checkpoint = (
+        torch.load(checkpoint_path, map_location="cpu")
+        if checkpoint_path.exists()
+        else None
+    )
+    return checkpoint
+
+
+def load_config():
+    config_file_path = Path(sys.argv[2]) / "config.toml"
+    config_dict = load_config_dict(config_file_path)
+    return init_config_object(config_dict)
 
 
 def init_config_object(config_dict):
@@ -16,6 +36,7 @@ def init_config_object(config_dict):
         object_hook=lambda d: namedtuple("Config", d.keys())(*d.values()),
     )
 
+
 def prepare_data():
     file_name = sys.argv[2]
     path = Path(file_name)
@@ -24,32 +45,34 @@ def prepare_data():
 
 
 def train():
-    config_file_path = Path(sys.argv[2]) / "config.toml"
-    config_dict = load_config_dict(config_file_path)
-    config = init_config_object(config_dict)
+    config = load_config()
     experiment = importlib.import_module(
         "template.experiment." + config.experiment_name
     )
+    checkpoint = get_checkpoint()
     data = experiment.Data(config)
-    model = experiment.Model(config)
-    t = Trainer(config, data, model)
+    model = experiment.Model(config, checkpoint)
+    t = Trainer(config, data, model, checkpoint)
     t.run()
 
 
 def generate():
-    config_file_path = Path(sys.argv[2]) / "config.toml"
-    config_dict = load_config_dict(config_file_path)
-    config = init_config_object(config_dict)
+    config = load_config()
+    checkpoint = get_checkpoint()
     experiment = importlib.import_module(
         "template.experiment." + config.experiment_name
     )
     data = experiment.Data(config)
-    model = experiment.Model(config)
-    t = Trainer(config, data, model)
+    model = experiment.Model(config, checkpoint)
+    t = Trainer(config, data, model, checkpoint)
     t.generate()
 
 
-scripts = {"prepare_data": prepare_data, "train": train, 'generate':generate}
+scripts = {
+    "prepare_data": prepare_data,
+    "train": train,
+    "generate": generate,
+}
 
 
 def main():

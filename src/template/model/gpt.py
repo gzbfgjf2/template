@@ -25,7 +25,7 @@ class Block(nn.Module):
 
 
 class GPT(OptimizerMixin, nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, checkpoint=None):
         super().__init__()
         self.config = config
         self.wte = nn.Embedding(config.n_vocab, config.d)
@@ -38,15 +38,12 @@ class GPT(OptimizerMixin, nn.Module):
             [Block(config) for _ in range(config.n_layer)]
         )
         self.loss_function = F.cross_entropy
-        self.load_weight(config)
+        self.load_weight(config, checkpoint)
 
-    def load_weight(self, config):
-        experiment_path = Path(sys.argv[2])
-        checkpoint_path = experiment_path / "checkpoint.ckpt"
-        if checkpoint_path.exists():
-            print("checkpoint exists, load from checkpoint, ignore init_from")
-            checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    def load_weight(self, config, checkpoint=None):
+        if checkpoint is not None:
             self.load_state_dict(checkpoint["model"])
+            print('loaded')
             return
 
         self.apply(self._init_weights)
