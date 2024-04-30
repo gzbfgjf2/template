@@ -93,10 +93,6 @@ class Data:
         metric = Perplexity(device=predictions[0].device)
         for prediction, label in zip(predictions, labels):
             metric.update(prediction, label[1])
-            ids = torch.argmax(prediction, dim=-1)
-            for sequence in ids:
-                print(self.decode(sequence.tolist()))
-
         return {"perplexity": metric.compute()}
 
     def encode(self, string):

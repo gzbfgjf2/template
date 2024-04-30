@@ -8,7 +8,6 @@ from ._nn.layer_norm import LayerNorm
 from ._mixin.optimizer import OptimizerMixin
 from pathlib import Path
 import sys
-import time
 
 
 class Block(nn.Module):
@@ -100,7 +99,6 @@ class GPT(OptimizerMixin, nn.Module):
         return logits, loss
 
     def forward(self, idx):
-        a = time.time()
         device = idx.device
         b, t = idx.size()
         pos = torch.arange(0, t, dtype=torch.long, device=device)
