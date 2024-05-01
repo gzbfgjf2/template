@@ -162,4 +162,4 @@ cython_debug/
 
 playground/
 data/
-run/
+*.ckpt
