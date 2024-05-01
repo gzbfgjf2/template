@@ -78,3 +78,7 @@ scripts = {
 def main():
     script_name = sys.argv[1]
     scripts[script_name]()
+
+
+if __name__ == "__main__":
+    main()

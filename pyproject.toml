@@ -13,4 +13,4 @@ dependencies = [
 
 [project.scripts]
 
-template = "template.executable:main"
+template = "template.__main__:main"
