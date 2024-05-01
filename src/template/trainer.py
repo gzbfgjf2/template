@@ -1,10 +1,11 @@
 import torch
 from types import SimpleNamespace
-import json
 import tomllib
 
 from pathlib import Path
 import sys
+from contextlib import nullcontext
+
 
 RJUST_WIDTH = 20
 
@@ -35,6 +36,13 @@ def load_config_dict(path):
         return tomllib.load(f)
 
 
+torch_type = {
+    "float32": torch.float32,
+    "bfloat16": torch.bfloat16,
+    "float16": torch.float16,
+}
+
+
 class Trainer:
     def __init__(self, config, data, model, checkpoint=None):
         self.config = config
@@ -43,6 +51,15 @@ class Trainer:
         self.data = data
         self.model = model.to(self.device)
         self.init_optimizer()
+        # autocast very slow with cpu and float16
+        self.ctx = (
+            nullcontext()
+            if config.device == "cpu"
+            else torch.amp.autocast(
+                device_type=config.device, dtype=config.dtype
+            )
+        )
+
         del checkpoint
 
     def generate(self):
@@ -110,10 +127,9 @@ class Trainer:
             self.optimizer.load_state_dict(self.checkpoint["optimizer"])
 
     def forward_backward_step(self, data):
-        # with torch.autocast(
-        #     device_type=self.config.device, dtype=torch.bfloat16
-        # ):
-        _, loss = self.model.training_step(data)
+        # pytorch super slow with autocast on cpu and bfloat16
+        with self.ctx:
+            _, loss = self.model.training_step(data)
         self.state.train_loss = round(loss.item(), 3)
         self.state.loss = loss / self.config.gradient_accumulation_steps
         self.state.loss.backward()
@@ -153,10 +169,8 @@ class Trainer:
         self.state.eval_predictions = []
         self.state.eval_labels = []
         for i, data in enumerate(loader):
-            # with torch.autocast(
-            #     device_type=self.config.device, dtype=torch.bfloat16
-            # ):
-            prediction, eval_loss = self.model.evaluation_step(data)
+            with self.ctx:
+                prediction, eval_loss = self.model.evaluation_step(data)
             losses[i] = eval_loss
             # may need input, so append all data
             self.state.eval_labels.append(data)
