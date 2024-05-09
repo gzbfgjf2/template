@@ -10,18 +10,23 @@ from contextlib import nullcontext
 RJUST_WIDTH = 20
 
 
+def line_print(x):
+    print(x, end=' ')
+
+
 class StateLog:
     def __init__(self):
         self.previous_keys = None
 
-    def log(self, keys, vals):
-        vals = "".join([f"{v}".rjust(RJUST_WIDTH) for v in vals])
-        if keys == self.previous_keys:
-            print(vals)
-            return
-        self.previous_keys = keys
-        keys = "".join([k.rjust(RJUST_WIDTH) for k in keys])
-        print(f"\n{keys}\n{vals}")
+    def log(self, dict):
+        for k, v in dict.items():
+            if "loss" in k:
+                line_print(f"{k}: {v:.3f}")
+            elif k == "optimization_step":
+                line_print(f"step: {v}")
+            else:
+                line_print(f"{k}: {v}")
+        line_print("\n")
 
 
 state_log = StateLog()
@@ -147,12 +152,13 @@ class Trainer:
 
     def optimize_step_log(self):
         keys = "step", "epoch", "optimization_step", "train_loss"
-        vals = ["optimization"]
+        res = {}
         for k in keys[1:]:
             if not hasattr(self.state, k):
                 assert False, f"{k} not in self.state"
-            vals.append(getattr(self.state, k))
-        state_log.log(keys, vals)
+            res[k] = getattr(self.state, k)
+        # state_log.log(keys, vals)
+        state_log.log(res)
 
     def optimize(self):
         self.optimize_step()
@@ -192,12 +198,12 @@ class Trainer:
             "eval_loss",
             "metric",
         ]
-        vals = ["evaluation"]
+        res = {"step": "evaluation"}
         for k in keys[1:]:
             if not hasattr(self.state, k):
                 assert False, f"{k} not in self.state"
-            vals.append(getattr(self.state, k))
-        state_log.log(keys, vals)
+            res[k] = getattr(self.state, k)
+        state_log.log(res)
 
     def evaluate(self):
         self.evaluation_step()
