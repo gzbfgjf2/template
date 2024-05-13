@@ -1,10 +1,11 @@
 import importlib
 from pathlib import Path
 import sys
-from template.trainer import Trainer, load_config_dict
+from template.trainer import Trainer
 import json
 from collections import namedtuple
 import torch
+import tomllib
 
 
 def get_checkpoint():
@@ -18,6 +19,11 @@ def get_checkpoint():
         else None
     )
     return checkpoint
+
+
+def load_config_dict(path):
+    with open(path, "rb") as f:
+        return tomllib.load(f)
 
 
 def load_config():
