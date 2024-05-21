@@ -10,7 +10,7 @@ from typing import List
 
 def prepare(path: Path):
     data_url = "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
-    with open(path / "input.text", "w") as f:
+    with open(path / "input.txt", "w") as f:
         f.write(requests.get(data_url).text)
     text = requests.get(data_url).text
     chars = sorted(list(set(text)))
