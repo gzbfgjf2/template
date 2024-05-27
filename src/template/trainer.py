@@ -15,20 +15,25 @@ torch_type = {
 
 
 class Trainer:
-    def __init__(self, config, data, model, checkpoint=None):
+    def __init__(self, config, data, model, ddp, checkpoint=None):
         self.config = config
-        self.device = self.config.device
+        self.device_type = self.config.device_type
+        self.ddp = ddp
         self.init_state(checkpoint)
         self.data = data
-        self.model = model.to(self.device)
+        model = model.to(self.ddp.device)
+        self.model = self.ddp.wrap_model(model)
         self.init_optimizer()
-        # autocast very slow with cpu and float16
+        # autocast very slow with cpu and float16 therefore nullcontext
         self.ctx = (
             nullcontext()
-            if config.device == "cpu"
+            if self.config.device_type == "cpu"
             else torch.amp.autocast(
                 device_type=config.device, dtype=config.dtype
             )
+        )
+        self.scaler = torch.cuda.amp.GradScaler(
+            enabled=(config.dtype == "float16")
         )
 
         del checkpoint
@@ -49,14 +54,22 @@ class Trainer:
     def run(self):
         self.evaluation_step()
         self.evaluation_step_log()
+        # todo: delete
         # self.sample()
         loader = self.data.train_loader()
         for epoch in range(self.config.epoch):
             self.state.epoch = epoch
-            for step, data in enumerate(loader):
+            for step, data in enumerate(loader, start=1):
                 # looks ugly but the logic is very easy to read
-                self.state.step = step + 1
+                self.state.step = step
+                # todo: delete
                 # data = self.iterable_to_device(data, self.device)
+                if self.ddp.enabled:
+                    self.model.require_backward_grad_sync = (
+                        self.state.step
+                        % self.config.gradient_accumulation_steps
+                        == 0
+                    )
                 self.forward_backward_step(data)
                 if self.should_optimize():
                     self.optimize()
@@ -70,6 +83,7 @@ class Trainer:
             if self.should_save_checkpoint():
                 self.save_checkpoint()
 
+    # todo: delete
     def load_checkpoint(self):
         experiment_path = Path(sys.argv[2])
         checkpoint_path = experiment_path / "checkpoint.ckpt"
@@ -78,6 +92,7 @@ class Trainer:
         if checkpoint_path.exists():
             self.checkpoint = torch.load(checkpoint_path, map_location="cpu")
 
+    # todo: delete?
     def del_checkpoint(self):
         if hasattr(self, "checkpoint"):
             del self.checkpoint
@@ -103,7 +118,7 @@ class Trainer:
             _, loss = self.model.training_step(data)
         self.state.train_loss = round(loss.item(), 3)
         self.state.loss = loss / self.config.gradient_accumulation_steps
-        self.state.loss.backward()
+        self.scaler.scale(self.state.loss).backward()
 
     def handle_save_metric(self):
         self.state.save_metric = -self.state.eval_loss
@@ -112,7 +127,8 @@ class Trainer:
         return (self.state.step) % self.config.gradient_accumulation_steps == 0
 
     def optimize_step(self):
-        self.optimizer.step()
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
         self.optimizer.zero_grad(set_to_none=True)
         self.state.optimization_step += 1
 
@@ -131,7 +147,9 @@ class Trainer:
         self.optimize_step_log()
 
     def should_evaluate(self):
-        return (self.state.optimization_step) % self.config.eval_interval == 0
+        return (
+            self.state.optimization_step
+        ) % self.config.eval_interval == 0 and self.ddp.master_process
 
     @torch.no_grad()
     def evaluation_step(self):
@@ -186,7 +204,11 @@ class Trainer:
 
     def save_checkpoint(self):
         checkpoint = {
-            "model": self.model.state_dict(),
+            "model": (
+                self.model.module.state_dict()
+                if self.ddp.ddp_enabled
+                else self.model.state_dict()
+            ),
             "optimizer": self.optimizer.state_dict(),
             "state": self.state,
         }

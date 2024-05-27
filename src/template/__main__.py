@@ -1,11 +1,10 @@
 import importlib
 from pathlib import Path
 import sys
-from template.trainer import Trainer
-import json
-from collections import namedtuple
 import torch
-import tomllib
+from template.trainer import Trainer
+from template.config import load_config
+from template.ddp import DdpManager
 
 
 def get_checkpoint():
@@ -21,28 +20,6 @@ def get_checkpoint():
     return checkpoint
 
 
-def load_config_dict(path):
-    with open(path, "rb") as f:
-        return tomllib.load(f)
-
-
-def load_config():
-    config_file_path = Path(sys.argv[2]) / "config.toml"
-    config_dict = load_config_dict(config_file_path)
-    return init_config_object(config_dict)
-
-
-def init_config_object(config_dict):
-    # https://stackoverflow.com/a/34997118/17749529
-    # https://stackoverflow.com/a/15882327/17749529
-    # dictionary to object for dot access
-    # namedtuple for immutability
-    return json.loads(
-        json.dumps(config_dict),
-        object_hook=lambda d: namedtuple("Config", d.keys())(*d.values()),
-    )
-
-
 def prepare_data():
     file_name = sys.argv[2]
     path = Path(file_name)
@@ -55,11 +32,13 @@ def train():
     experiment = importlib.import_module(
         "template.experiment." + config.experiment_name
     )
+    ddp = DdpManager(config)
     checkpoint = get_checkpoint()
     data = experiment.Data(config)
     model = experiment.Model(config, checkpoint)
-    t = Trainer(config, data, model, checkpoint)
+    t = Trainer(config, data, model, ddp, checkpoint)
     t.run()
+    ddp.destroy()
 
 
 def generate():
