@@ -206,7 +206,7 @@ class Trainer:
         checkpoint = {
             "model": (
                 self.model.module.state_dict()
-                if self.ddp.ddp_enabled
+                if self.ddp.enabled
                 else self.model.state_dict()
             ),
             "optimizer": self.optimizer.state_dict(),
