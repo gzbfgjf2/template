@@ -29,7 +29,7 @@ class Trainer:
             nullcontext()
             if self.config.device_type == "cpu"
             else torch.amp.autocast(
-                device_type=self.device_type, dtype=config.dtype
+                device_type=self.device_type, dtype=torch_type[config.dtype]
             )
         )
         self.scaler = torch.cuda.amp.GradScaler(
