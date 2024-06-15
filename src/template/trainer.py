@@ -51,6 +51,10 @@ class Trainer:
             print(self.data.decode(y[0].tolist()))
             print("--------------")
 
+    @staticmethod
+    def iterable_to_device(iterable, device):
+        return tuple(x.to(device) for x in iterable)
+
     def run(self):
         self.evaluation_step()
         self.evaluation_step_log()
@@ -62,8 +66,7 @@ class Trainer:
             for step, data in enumerate(loader, start=1):
                 # looks ugly but the logic is very easy to read
                 self.state.step = step
-                # todo: delete
-                # data = self.iterable_to_device(data, self.device)
+                data = self.iterable_to_device(data, self.ddp.device)
                 if self.ddp.enabled:
                     self.model.require_backward_grad_sync = (
                         self.state.step
@@ -159,6 +162,7 @@ class Trainer:
         self.state.eval_predictions = []
         self.state.eval_labels = []
         for i, data in enumerate(loader):
+            data = self.iterable_to_device(data, self.ddp.device)
             with self.ctx:
                 prediction, eval_loss = self.model.evaluation_step(data)
             losses[i] = eval_loss
