@@ -1,5 +1,6 @@
 import os
 import torch
+from types import SimpleNamespace
 from torch.distributed import init_process_group, destroy_process_group
 from torch.nn.parallel import DistributedDataParallel as DDP
 
@@ -54,6 +55,7 @@ class DdpManager:
     def wrap_model(self, model):
         if self.enabled:
             return DDP(model, device_ids=[self.ddp_local_rank])
+        return SimpleNamespace({"module": model})
         return model
 
     @staticmethod

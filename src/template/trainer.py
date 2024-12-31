@@ -22,7 +22,8 @@ class Trainer:
         self.init_state(checkpoint)
         self.data = data
         model = model.to(self.ddp.device)
-        self.model = self.ddp.wrap_model(model)
+        self.ddp_model = self.ddp.wrap_model(model)
+        self.base_model = self.ddp_model.module 
         self.init_optimizer()
         # autocast very slow with cpu and float16 therefore nullcontext
         self.ctx = (
@@ -45,7 +46,7 @@ class Trainer:
                 None, ...
             ]
 
-            y = self.model.generate(x)
+            y = self.base_model.generate(x)
             print(y.shape)
 
             print(self.data.decode(y[0].tolist()))
@@ -68,7 +69,7 @@ class Trainer:
                 self.state.step = step
                 data = self.iterable_to_device(data, self.ddp.device)
                 if self.ddp.enabled:
-                    self.model.require_backward_grad_sync = (
+                    self.ddp_model.require_backward_grad_sync = (
                         self.state.step
                         % self.config.gradient_accumulation_steps
                         == 0
@@ -111,14 +112,14 @@ class Trainer:
         self.state.best_save_metric = -float("inf")
 
     def init_optimizer(self, checkpoint=None):
-        self.optimizer = self.model.create_optimizer()
+        self.optimizer = self.base_model.create_optimizer()
         if checkpoint is not None:
             self.optimizer.load_state_dict(self.checkpoint["optimizer"])
 
     def forward_backward_step(self, data):
         # pytorch super slow with autocast on cpu and bfloat16
         with self.ctx:
-            _, loss = self.model.training_step(data)
+            _, loss = self.base_model.training_step(data)
         self.state.train_loss = round(loss.item(), 3)
         self.state.loss = loss / self.config.gradient_accumulation_steps
         self.scaler.scale(self.state.loss).backward()
@@ -156,7 +157,7 @@ class Trainer:
 
     @torch.no_grad()
     def evaluation_step(self):
-        self.model.eval()
+        self.ddp_model.eval()
         loader = self.data.validation_loader()
         losses = torch.zeros(self.config.eval_iters)
         self.state.eval_predictions = []
@@ -164,7 +165,7 @@ class Trainer:
         for i, data in enumerate(loader):
             data = self.iterable_to_device(data, self.ddp.device)
             with self.ctx:
-                prediction, eval_loss = self.model.evaluation_step(data)
+                prediction, eval_loss = self.base_model.evaluation_step(data)
             losses[i] = eval_loss
             # may need input, so append all data
             self.state.eval_labels.append(data)
@@ -176,7 +177,7 @@ class Trainer:
         )
         self.state.eval_loss = round(losses.mean().item(), 4)
         self.handle_save_metric()
-        self.model.train()
+        self.ddp_model.train()
 
     def evaluation_step_log(self):
         keys = [
@@ -208,11 +209,7 @@ class Trainer:
 
     def save_checkpoint(self):
         checkpoint = {
-            "model": (
-                self.model.module.state_dict()
-                if self.ddp.enabled
-                else self.model.state_dict()
-            ),
+            "model": self.base_model.state_dict(),
             "optimizer": self.optimizer.state_dict(),
             "state": self.state,
         }
