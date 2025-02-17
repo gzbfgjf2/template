@@ -61,3 +61,9 @@ class DdpManager:
     @staticmethod
     def destroy():
         destroy_process_group()
+
+
+
+class StrategyWrapper:
+    def __init__():
+        pass
