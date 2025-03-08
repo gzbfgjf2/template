@@ -63,7 +63,19 @@ class DdpManager:
         destroy_process_group()
 
 
+class Noop:
+    def __init__(self, config):
+        self.master_process = True
+        self.seed_offset = 0
+        self.ddp_world_size = 1
+        self.device = config.device_type
 
-class StrategyWrapper:
-    def __init__():
+    def wrap_model(self, model):
+        return model
+
+    @staticmethod
+    def destroy():
         pass
+
+
+
