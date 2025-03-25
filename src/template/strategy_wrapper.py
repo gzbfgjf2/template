@@ -26,7 +26,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 # default is parallel, single gpu is a special case of parallel
 
-
+# https://github.com/Lightning-AI/pytorch-lightning/blob/df5dee674243e124a2bf34d9975dd586ff008d4b/src/lightning/pytorch/strategies/strategy.py#L628
 class DdpManager:
     def __init__(self, config):
         self.enabled = int(os.environ.get("RANK", -1)) != -1
