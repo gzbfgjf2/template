@@ -1,11 +1,9 @@
 import importlib
 from pathlib import Path
 import sys
-from template.trainer import Trainer
-import json
-from collections import namedtuple
 import torch
-import tomllib
+from template.trainer import Trainer
+from template.config import load_config
 
 
 def get_checkpoint():
@@ -19,28 +17,6 @@ def get_checkpoint():
         else None
     )
     return checkpoint
-
-
-def load_config_dict(path):
-    with open(path, "rb") as f:
-        return tomllib.load(f)
-
-
-def load_config():
-    config_file_path = Path(sys.argv[2]) / "config.toml"
-    config_dict = load_config_dict(config_file_path)
-    return init_config_object(config_dict)
-
-
-def init_config_object(config_dict):
-    # https://stackoverflow.com/a/34997118/17749529
-    # https://stackoverflow.com/a/15882327/17749529
-    # dictionary to object for dot access
-    # namedtuple for immutability
-    return json.loads(
-        json.dumps(config_dict),
-        object_hook=lambda d: namedtuple("Config", d.keys())(*d.values()),
-    )
 
 
 def prepare_data():

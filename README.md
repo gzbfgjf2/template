@@ -8,3 +8,14 @@ pip install -e .
 git remote add origin <my-repo-remote-url>
 git push -u origin main
 ```
+
+torchrun
+```bash
+torchrun src/template/__main__.py train run/<run_folder>
+```
+
+prepare_data
+```bash
+template prepare_data datafolder
+
+```

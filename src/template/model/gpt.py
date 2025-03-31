@@ -43,7 +43,7 @@ class GPT(OptimizerMixin, nn.Module):
     def load_weight(self, config, checkpoint=None):
         if checkpoint is not None:
             self.load_state_dict(checkpoint["model"])
-            print('loaded')
+            print("loaded")
             return
 
         self.apply(self._init_weights)
@@ -73,7 +73,7 @@ class GPT(OptimizerMixin, nn.Module):
             self.config.weight_decay,
             self.config.learning_rate,
             (self.config.beta1, self.config.beta2),
-            self.config.device,
+            self.config.device_type,
         )
         return optimizer
 
