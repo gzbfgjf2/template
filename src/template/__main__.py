@@ -4,7 +4,6 @@ import sys
 import torch
 from template.trainer import Trainer
 from template.config import load_config
-from template.ddp import DdpManager
 
 
 def get_checkpoint():
@@ -32,13 +31,11 @@ def train():
     experiment = importlib.import_module(
         "template.experiment." + config.experiment_name
     )
-    ddp = DdpManager(config)
     checkpoint = get_checkpoint()
     data = experiment.Data(config)
     model = experiment.Model(config, checkpoint)
-    t = Trainer(config, data, model, ddp, checkpoint)
+    t = Trainer(config, data, model, checkpoint)
     t.run()
-    ddp.destroy()
 
 
 def generate():

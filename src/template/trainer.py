@@ -15,26 +15,24 @@ torch_type = {
 
 
 class Trainer:
-    def __init__(self, config, data, model, ddp, checkpoint=None):
+    def __init__(self, config, data, model, checkpoint=None):
         self.config = config
-        self.device_type = self.config.device_type
-        self.ddp = ddp
+        self.device = self.config.device_type
         self.init_state(checkpoint)
         self.data = data
-        model = model.to(self.ddp.device)
-        self.ddp_model = self.ddp.wrap_model(model)
-        self.base_model = self.ddp_model.module 
+        model = model.to(self.device)
+        self.model = model
         self.init_optimizer()
         # autocast very slow with cpu and float16 therefore nullcontext
         self.ctx = (
             nullcontext()
             if self.config.device_type == "cpu"
             else torch.amp.autocast(
-                device_type=self.device_type, dtype=torch_type[config.dtype]
+                device_type=self.device, dtype=torch_type[config.dtype]
             )
         )
-        self.scaler = torch.cuda.amp.GradScaler(
-            enabled=(config.dtype == "float16")
+        self.scaler = torch.amp.GradScaler(
+            "cuda", enabled=(config.dtype == "float16")
         )
 
         del checkpoint
@@ -46,7 +44,7 @@ class Trainer:
                 None, ...
             ]
 
-            y = self.base_model.generate(x)
+            y = self.model.generate(x)
             print(y.shape)
 
             print(self.data.decode(y[0].tolist()))
@@ -67,13 +65,13 @@ class Trainer:
             for step, data in enumerate(loader, start=1):
                 # looks ugly but the logic is very easy to read
                 self.state.step = step
-                data = self.iterable_to_device(data, self.ddp.device)
-                if self.ddp.enabled:
-                    self.ddp_model.require_backward_grad_sync = (
-                        self.state.step
-                        % self.config.gradient_accumulation_steps
-                        == 0
-                    )
+                data = self.iterable_to_device(data, self.device)
+                # if self.ddp.enabled:
+                #     self.ddp_model.require_backward_grad_sync = (
+                #         self.state.step
+                #         % self.config.gradient_accumulation_steps
+                #         == 0
+                #     )
                 self.forward_backward_step(data)
                 if self.should_optimize():
                     self.optimize()
@@ -112,14 +110,14 @@ class Trainer:
         self.state.best_save_metric = -float("inf")
 
     def init_optimizer(self, checkpoint=None):
-        self.optimizer = self.base_model.create_optimizer()
+        self.optimizer = self.model.create_optimizer()
         if checkpoint is not None:
             self.optimizer.load_state_dict(self.checkpoint["optimizer"])
 
     def forward_backward_step(self, data):
         # pytorch super slow with autocast on cpu and bfloat16
         with self.ctx:
-            _, loss = self.base_model.training_step(data)
+            _, loss = self.model.training_step(data)
         self.state.train_loss = round(loss.item(), 3)
         self.state.loss = loss / self.config.gradient_accumulation_steps
         self.scaler.scale(self.state.loss).backward()
@@ -151,21 +149,19 @@ class Trainer:
         self.optimize_step_log()
 
     def should_evaluate(self):
-        return (
-            self.state.optimization_step
-        ) % self.config.eval_interval == 0 and self.ddp.master_process
+        return (self.state.optimization_step) % self.config.eval_interval == 0
 
     @torch.no_grad()
     def evaluation_step(self):
-        self.ddp_model.eval()
+        self.model.eval()
         loader = self.data.validation_loader()
         losses = torch.zeros(self.config.eval_iters)
         self.state.eval_predictions = []
         self.state.eval_labels = []
         for i, data in enumerate(loader):
-            data = self.iterable_to_device(data, self.ddp.device)
+            data = self.iterable_to_device(data, self.device)
             with self.ctx:
-                prediction, eval_loss = self.base_model.evaluation_step(data)
+                prediction, eval_loss = self.model.evaluation_step(data)
             losses[i] = eval_loss
             # may need input, so append all data
             self.state.eval_labels.append(data)
@@ -177,7 +173,7 @@ class Trainer:
         )
         self.state.eval_loss = round(losses.mean().item(), 4)
         self.handle_save_metric()
-        self.ddp_model.train()
+        self.model.train()
 
     def evaluation_step_log(self):
         keys = [
@@ -209,7 +205,7 @@ class Trainer:
 
     def save_checkpoint(self):
         checkpoint = {
-            "model": self.base_model.state_dict(),
+            "model": self.model.state_dict(),
             "optimizer": self.optimizer.state_dict(),
             "state": self.state,
         }

@@ -13,3 +13,9 @@ torchrun
 ```bash
 torchrun src/template/__main__.py train run/<run_folder>
 ```
+
+prepare_data
+```bash
+template prepare_data datafolder
+
+```
